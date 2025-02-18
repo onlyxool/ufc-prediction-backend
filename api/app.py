@@ -6,7 +6,7 @@ integrating machine learning models for predictions.
 
 Dependencies:
     - os
-    - pickle
+    - joblib
     - datetime
     - urllib.parse
     - requests
@@ -24,7 +24,7 @@ Flask Routes:
 """
 
 import os
-import pickle
+import joblib
 
 from datetime import datetime
 from urllib.parse import urlparse
@@ -42,14 +42,14 @@ from api.util import convert_height, convert_weight, convert_date_of_birth, conv
 app = Flask(__name__)
 CORS(app)
 
-with open('model/label_encoder.pkl', 'rb') as f:
-    label_encoder = pickle.load(f)
+with open('model/label_encoder.joblib', 'rb') as f:
+    label_encoder = joblib.load(f)
 
-with open('model/scaler_arp.pkl', 'rb') as f:
-    scaler = pickle.load(f)
+with open('model/scaler_arp.joblib', 'rb') as f:
+    scaler = joblib.load(f)
 
-with open('model/RandomForest-arp.pkl', 'rb') as f:
-    model = pickle.load(f)
+with open('model/RandomForest-arp.joblib', 'rb') as f:
+    model = joblib.load(f)
 
 
 def download_image(path, image_name, image_url, over_write):
