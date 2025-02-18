@@ -37,7 +37,7 @@ from unidecode import unidecode
 
 from flask_cors import CORS
 from flask import Flask, jsonify
-from util import convert_height, convert_weight, convert_date_of_birth, convert_reach
+from api.util import convert_height, convert_weight, convert_date_of_birth, convert_reach
 
 app = Flask(__name__)
 CORS(app)
@@ -109,7 +109,6 @@ def get_fighter_url(fighter_name):
     fighter_url = None
     url='http://www.ufcstats.com/statistics/fighters/search?query='
 
-    print(fighter_name)
     response = requests.get(url+fighter_name.split(' ')[-1], timeout=10) #Search By Famliy name
     soup = BeautifulSoup(response.content, 'html.parser')
 
