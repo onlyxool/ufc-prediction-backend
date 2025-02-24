@@ -15,3 +15,4 @@ waitress==3.0.2
 watchdog==6.0.0
 scikit-learn==1.6.0
 lxml==5.3.1
+onnxruntime==1.20.1

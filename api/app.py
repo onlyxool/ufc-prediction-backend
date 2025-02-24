@@ -6,7 +6,7 @@ integrating machine learning models for predictions.
 
 Dependencies:
     - os
-    - joblib
+    - onnxruntime
     - datetime
     - urllib.parse
     - requests
@@ -25,7 +25,6 @@ Flask Routes:
 
 import os
 import gc
-import joblib
 
 from datetime import datetime
 from urllib.parse import urlparse
@@ -33,6 +32,7 @@ from urllib.parse import urlparse
 import requests
 import pycountry
 import numpy as np
+import onnxruntime as ort
 from bs4 import BeautifulSoup
 from unidecode import unidecode
 
@@ -45,9 +45,8 @@ CORS(app)
 
 stance_lable = ['Open Stance', 'Orthodox', 'Southpaw', 'Switch']
 
-
-with open('model/RandomForest-arp.joblib', 'rb') as f:
-    model = joblib.load(f, mmap_mode='r')
+model = ort.InferenceSession('model/RandomForest-arp.onnx')
+input_name = model.get_inputs()[0].name
 
 
 def download_image(path, image_name, image_url, over_write):
@@ -318,8 +317,9 @@ async def _predict(input_data):
     Returns:
         np.ndarray: An array of prediction probabilities for each match.
     """
-    output_data = model.predict_proba(input_data)
-    return output_data
+    output_data = model.run(None, {input_name: input_data.astype(np.float32)})
+
+    return output_data[1]
 
 
 @app.route('/predict/<event_path>', methods=['GET', 'POST'])
@@ -339,8 +339,8 @@ async def predict(event_path):
     output_data = await _predict(input_data)
 
     for i, match in enumerate(event['match']):
-        match['red']['outcome'] = str(round(output_data[i][0]*100, 1))+'%'
-        match['blue']['outcome'] = str(round(output_data[i][1]*100, 1))+'%'
+        match['red']['outcome'] = str(round(output_data[i]['Red']*100, 1))+'%'
+        match['blue']['outcome'] = str(round(output_data[i]['Blue']*100, 1))+'%'
 
     del output_data
     gc.collect()
