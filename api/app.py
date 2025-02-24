@@ -24,6 +24,7 @@ Flask Routes:
 """
 
 import os
+import gc
 import joblib
 
 from datetime import datetime
@@ -42,14 +43,11 @@ from api.util import convert_height, convert_weight, convert_date_of_birth, conv
 app = Flask(__name__)
 CORS(app)
 
-with open('model/label_encoder.joblib', 'rb') as f:
-    label_encoder = joblib.load(f)
+stance_lable = ['Open Stance', 'Orthodox', 'Southpaw', 'Switch']
 
-with open('model/scaler_arp.joblib', 'rb') as f:
-    scaler = joblib.load(f)
 
 with open('model/RandomForest-arp.joblib', 'rb') as f:
-    model = joblib.load(f)
+    model = joblib.load(f, mmap_mode='r')
 
 
 def download_image(path, image_name, image_url, over_write):
@@ -110,7 +108,7 @@ def get_fighter_url(fighter_name):
     url='http://www.ufcstats.com/statistics/fighters/search?query='
 
     response = requests.get(url+fighter_name.split(' ')[-1], timeout=10) #Search By Famliy name
-    soup = BeautifulSoup(response.content, 'html.parser')
+    soup = BeautifulSoup(response.content, 'lxml')
 
     fighters_ = soup.find_all('tr', class_='b-statistics__table-row')
 
@@ -123,14 +121,18 @@ def get_fighter_url(fighter_name):
 
     if fighter_url is None:
         response = requests.get(url+fighter_name.split(' ')[0], timeout=10) #Search By Given name
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, 'lxml')
 
         fighters_ = soup.find_all('tr', class_='b-statistics__table-row')
 
         for fighter_ in fighters_:
             if unidecode(fighter_name.split(' ')[0]) in fighter_.text:
+                del response, soup
+                gc.collect()
                 return fighter_.findChild('a')['href']
     else:
+        del response, soup
+        gc.collect()
         return fighter_url
 
 
@@ -160,7 +162,7 @@ def get_fighter_stat(fighter_stat_):
         elif key == 'Reach':
             stat_np[3] = convert_reach(value)
         elif key == 'STANCE':
-            stat_np[4] = float(label_encoder.fit_transform([value])[0])
+            stat_np[4] = stance_lable.index(value)
         elif key == 'DOB':
             stat_np[0] = convert_date_of_birth(value)
         elif key == 'SLpM':
@@ -213,15 +215,17 @@ def prepare_data(fighter_red, fighter_blue):
         np.ndarray: A NumPy array containing the combined data of both fighters.
     """
     response = requests.get(get_fighter_url(fighter_red), timeout=10)
-    fighter_red_stat_ = BeautifulSoup(response.content, 'html.parser')
+    fighter_red_stat_ = BeautifulSoup(response.content, 'lxml')
     fighter_red_stat = get_fighter_stat(fighter_red_stat_)
     fighter_red_record = get_fighter_record(fighter_red_stat_)
 
     response = requests.get(get_fighter_url(fighter_blue), timeout=10)
-    fighter_blue_stat_ = BeautifulSoup(response.content, 'html.parser')
+    fighter_blue_stat_ = BeautifulSoup(response.content, 'lxml')
     fighter_blue_stat = get_fighter_stat(fighter_blue_stat_)
     fighter_blue_record = get_fighter_record(fighter_blue_stat_)
 
+    del response
+    gc.collect()
     return np.concatenate((fighter_red_record, fighter_red_stat, fighter_blue_record, fighter_blue_stat))
 
 
@@ -259,7 +263,7 @@ def get_match(event_url):
     """
     response = requests.get(event_url, timeout=10)
     response.raise_for_status()
-    soup = BeautifulSoup(response.text, 'html.parser')
+    soup = BeautifulSoup(response.text, 'lxml')
 
     matchlist = list()
     input_data = list()
@@ -299,6 +303,8 @@ def get_match(event_url):
         match = {'red': red, 'blue': blue}
         matchlist.append(match)
 
+    del response, soup
+    gc.collect()
     return matchlist, np.array(input_data)
 
 
@@ -312,8 +318,7 @@ async def _predict(input_data):
     Returns:
         np.ndarray: An array of prediction probabilities for each match.
     """
-    scale_data = scaler.transform(input_data)
-    output_data = model.predict_proba(scale_data)
+    output_data = model.predict_proba(input_data)
     return output_data
 
 
@@ -337,6 +342,8 @@ async def predict(event_path):
         match['red']['outcome'] = str(round(output_data[i][0]*100, 1))+'%'
         match['blue']['outcome'] = str(round(output_data[i][1]*100, 1))+'%'
 
+    del output_data
+    gc.collect()
     return jsonify(event)
 
 
@@ -394,7 +401,7 @@ def get_event(event_url):
     response = requests.get(event_url, timeout=10)
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, 'html.parser')
+    soup = BeautifulSoup(response.text, 'lxml')
 
     event_name = soup.find('div', class_='field field--name-node-title field--type-ds field--label-hidden field__item').text.strip()
 
@@ -414,6 +421,8 @@ def get_event(event_url):
         'event_image': get_event_image(soup)
     }
 
+    del response, soup
+    gc.collect()
     return event
 
 
@@ -428,7 +437,7 @@ def get_event_list():
     response = requests.get(url, timeout=10)
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, 'html.parser')
+    soup = BeautifulSoup(response.text, 'lxml')
     cards = soup.find_all('div', class_='views-infinite-scroll-content-wrapper clearfix')
     upcoming_events = cards[0].find_all('div', class_='l-listing__item views-row')
 
@@ -436,6 +445,8 @@ def get_event_list():
     for card in upcoming_events:
         event_list.append('https://www.ufc.com'+card.find('h3').find('a').get('href'))
 
+    del response, soup
+    gc.collect()
     return event_list
 
 
@@ -448,7 +459,7 @@ def get_index():
     """
     url = "https://www.ufc.com"
     response = requests.get(url, timeout=10)
-    soup = BeautifulSoup(response.content, 'html.parser')
+    soup = BeautifulSoup(response.content, 'lxml')
 
     index_image = list()
     sources_ = soup.find('picture').find_all('source')
@@ -472,6 +483,8 @@ def get_index():
                 image['x2'] = download_image(img_path, resolution+'_2x.jpg', img_url, over_write)
         index_image.append(image)
 
+    del response, soup
+    gc.collect()
     return index_image
 
 
