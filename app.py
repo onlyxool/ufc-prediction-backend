@@ -38,7 +38,7 @@ from unidecode import unidecode
 
 from flask_cors import CORS
 from flask import Flask, jsonify
-from api.util import convert_height, convert_weight, convert_date_of_birth, convert_reach
+from util import convert_height, convert_weight, convert_date_of_birth, convert_reach
 
 app = Flask(__name__)
 CORS(app)
@@ -507,5 +507,4 @@ def onload():
 
 
 if __name__ == '__main__':
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=8080)
+    app.run()
