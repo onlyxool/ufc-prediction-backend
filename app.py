@@ -65,7 +65,7 @@ def download_image(path, image_name, image_url, over_write):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    if not os.path.exists(path+image_name) or over_write:
+    if not os.path.exists(path+image_name) and over_write:
         img_response = requests.get(image_url, timeout=10)
         img_response.raise_for_status()
 
