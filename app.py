@@ -476,7 +476,7 @@ def get_index():
             img_url = img_url_.scheme+'://'+ img_url_.netloc + img_url_.path
             img_path = 'static/images/index/'
 
-            over_write = True if datetime.now().weekday() == 0 else True
+            over_write = False if datetime.now().weekday() == 0 else False
             if img_url_.query.endswith('1x'):
                 image['x1'] = download_image(img_path, resolution+'_1x.jpg', img_url, over_write)
             elif img_url_.query.endswith('2x'):
