@@ -62,15 +62,16 @@ def download_image(path, image_name, image_url, over_write):
     Returns:
         str: The complete path of the saved image.
     """
-    if not os.path.exists(path):
-        os.makedirs(path)
+    if over_write:
+        if not os.path.exists(path):
+            os.makedirs(path)
 
-    if not os.path.exists(path+image_name) and over_write:
-        img_response = requests.get(image_url, timeout=10)
-        img_response.raise_for_status()
+        if not os.path.exists(path+image_name) and over_write:
+            img_response = requests.get(image_url, timeout=10)
+            img_response.raise_for_status()
 
-        with open(path+image_name, 'wb') as file:
-            file.write(img_response.content)
+            with open(path+image_name, 'wb') as file:
+                file.write(img_response.content)
 
     return path+image_name
 
@@ -481,7 +482,7 @@ def get_index():
                 image['x1'] = download_image(img_path, resolution+'_1x.jpg', img_url, over_write)
             elif img_url_.query.endswith('2x'):
                 image['x2'] = download_image(img_path, resolution+'_2x.jpg', img_url, over_write)
-        index_image.append(image)
+            index_image.append(image_urls)
 
     del response, soup
     gc.collect()
@@ -496,14 +497,17 @@ def onload():
     Returns:
         Response: A JSON response containing event details and images.
     """
-    get_index()
+
+    homepage = dict()
+    homepage['wallpaper'] = get_index()
 
     event_list = list()
     event_url_list = get_event_list()
     for event_url in event_url_list:
         event_list.append(get_event(event_url))
+    homepage['event_list'] = event_list
 
-    return jsonify(event_list)
+    return jsonify(homepage)
 
 
 if __name__ == '__main__':
