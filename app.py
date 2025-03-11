@@ -326,7 +326,7 @@ async def _predict(input_data):
     return output_data[1]
 
 
-@app.route('/predict/<event_path>', methods=['GET'])
+@app.route('/predict/<event_path>', methods=['GET', 'POST'])
 async def predict(event_path):
     """
     Flask route to predict outcomes for a given UFC event.
@@ -492,7 +492,7 @@ def get_index():
     return index_image
 
 
-@app.route('/', methods=['GET'])
+@app.route('/', methods=['GET', 'POST'])
 def onload():
     """
     Flask route to load the index page and list of upcoming events.
