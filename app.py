@@ -162,7 +162,10 @@ def get_fighter_stat(fighter_stat_):
         elif key == 'Reach':
             stat_np[3] = convert_reach(value)
         elif key == 'STANCE':
-            stat_np[4] = stance_lable.index(value)
+            try:
+                stat_np[4] = stance_lable.index(value)
+            except ValueError:
+                stat_np[4] = -1
         elif key == 'DOB':
             stat_np[0] = convert_date_of_birth(value)
         elif key == 'SLpM':
@@ -323,7 +326,7 @@ async def _predict(input_data):
     return output_data[1]
 
 
-@app.route('/predict/<event_path>', methods=['GET', 'POST'])
+@app.route('/predict/<event_path>', methods=['GET'])
 async def predict(event_path):
     """
     Flask route to predict outcomes for a given UFC event.
@@ -489,7 +492,7 @@ def get_index():
     return index_image
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def onload():
     """
     Flask route to load the index page and list of upcoming events.
