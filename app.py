@@ -478,6 +478,7 @@ def get_index():
         for image_url in image_urls:
             img_url_ = urlparse(image_url)
             img_url = img_url_.scheme+'://'+ img_url_.netloc + img_url_.path
+            img_url = img_url.replace('/s3/files/', 'https://ufc.com/images/') if img_url.startswith('/s3/files/') else img_url
             img_path = 'static/images/index/'
 
             over_write = False if datetime.now().weekday() == 0 else False
