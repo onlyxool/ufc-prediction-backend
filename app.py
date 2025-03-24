@@ -73,7 +73,9 @@ def download_image(path, image_name, image_url, over_write):
             with open(path+image_name, 'wb') as file:
                 file.write(img_response.content)
 
-    return path+image_name
+        return path+image_name
+    else:
+        return image_url
 
 
 def extract_fighter_image(img_url_):
@@ -486,7 +488,8 @@ def get_index():
                 image['x1'] = download_image(img_path, resolution+'_1x.jpg', img_url, over_write)
             elif img_url_.query.endswith('2x'):
                 image['x2'] = download_image(img_path, resolution+'_2x.jpg', img_url, over_write)
-            index_image.append(image_urls)
+
+            index_image.append(image)
 
     del response, soup
     gc.collect()
