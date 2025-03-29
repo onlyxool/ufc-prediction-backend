@@ -480,9 +480,11 @@ def get_index():
         for image_url in image_urls:
             img_url_ = urlparse(image_url)
             img_url = img_url_.scheme+'://'+ img_url_.netloc + img_url_.path
-            img_url = img_url.replace('/s3/files/', 'https://ufc.com/images/') if img_url.startswith('/s3/files/') else img_url
-            img_path = 'static/images/index/'
 
+            file_path = img_url.split('s3/')[-1]
+            img_url = 'https://ufc.com/images/styles/background_image_xl/s3/' + file_path
+
+            img_path = 'static/images/index/'
             over_write = False if datetime.now().weekday() == 0 else False
             if img_url_.query.endswith('1x'):
                 image['x1'] = download_image(img_path, resolution+'_1x.jpg', img_url, over_write)
