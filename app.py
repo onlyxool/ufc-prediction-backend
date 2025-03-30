@@ -14,8 +14,8 @@ Dependencies:
     - numpy
     - bs4 (BeautifulSoup)
     - unidecode
-    - flask
-    - flask_cors
+    - fastapi
+    - fastapi_cors
     - util (custom utilities for data conversion)
 
 Flask Routes:
@@ -36,12 +36,20 @@ import onnxruntime as ort
 from bs4 import BeautifulSoup
 from unidecode import unidecode
 
-from flask_cors import CORS
-from flask import Flask, jsonify
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.cors import CORSMiddleware
 from util import convert_height, convert_weight, convert_date_of_birth, convert_reach
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 stance_lable = ['Open Stance', 'Orthodox', 'Southpaw', 'Switch']
 
@@ -328,7 +336,7 @@ async def _predict(input_data):
     return output_data[1]
 
 
-@app.route('/predict/<event_path>', methods=['GET', 'POST'])
+@app.get('/predict/{event_path}')
 async def predict(event_path):
     """
     Flask route to predict outcomes for a given UFC event.
@@ -350,7 +358,7 @@ async def predict(event_path):
 
     del output_data
     gc.collect()
-    return jsonify(event)
+    return jsonable_encoder(event)
 
 
 def get_event_image(soup):
@@ -498,7 +506,7 @@ def get_index():
     return index_image
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.get('/')
 def onload():
     """
     Flask route to load the index page and list of upcoming events.
@@ -516,8 +524,10 @@ def onload():
         event_list.append(get_event(event_url))
     homepage['event_list'] = event_list
 
-    return jsonify(homepage)
+    return jsonable_encoder(homepage)
 
 
 if __name__ == '__main__':
-    app.run()
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
