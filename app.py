@@ -23,7 +23,6 @@ FastAPI Routes:
     - '/' : Fetches and displays upcoming events and their details.
 """
 
-import time
 import os
 import gc
 
