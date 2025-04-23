@@ -1,5 +1,5 @@
 """
-This module provides a Flask application for predicting UFC fight outcomes 
+This module provides a FastAPI application for predicting UFC fight outcomes
 based on fighter statistics scraped from the UFC website. It includes utilities 
 for extracting and processing fighter and event data, managing images, and 
 integrating machine learning models for predictions.
@@ -18,13 +18,17 @@ Dependencies:
     - fastapi_cors
     - util (custom utilities for data conversion)
 
-Flask Routes:
+FastAPI Routes:
     - '/predict/<event_path>' : Predicts outcomes of matches in an event.
     - '/' : Fetches and displays upcoming events and their details.
 """
 
+import time
 import os
 import gc
+
+import aiohttp
+import asyncio
 
 from datetime import datetime
 from urllib.parse import urlparse
@@ -36,7 +40,7 @@ import onnxruntime as ort
 from bs4 import BeautifulSoup
 from unidecode import unidecode
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from util import convert_height, convert_weight, convert_date_of_birth, convert_reach
@@ -45,11 +49,12 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=['*'],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
+
 
 stance_lable = ['Open Stance', 'Orthodox', 'Southpaw', 'Switch']
 
@@ -215,32 +220,40 @@ def get_fighter_record(fighter_stat_):
     return np.array([len(win_record_), len(loss_record_)])
 
 
-def prepare_data(fighter_red, fighter_blue):
+async def fetch_url(session, url):
+    async with session.get(url, timeout=10) as response:
+        return await response.text()
+
+async def prepare_data(session, fighter_red, fighter_blue):
     """
     Prepares input data for the prediction model by combining statistics
     and records for two fighters.
 
     Args:
-        fighter_red (str): The name of the red corner fighter.
-        fighter_blue (str): The name of the blue corner fighter.
-
+        session (aiohttp.ClientSession): Shared HTTP session
+        fighter_red (str): The name of the red corner fighter
+        fighter_blue (str): The name of the blue corner fighter
     Returns:
         np.ndarray: A NumPy array containing the combined data of both fighters.
     """
-    response = requests.get(get_fighter_url(fighter_red), timeout=10)
-    fighter_red_stat_ = BeautifulSoup(response.content, 'lxml')
-    fighter_red_stat = get_fighter_stat(fighter_red_stat_)
-    fighter_red_record = get_fighter_record(fighter_red_stat_)
+    # Fetch both fighter stats concurrently
+    red_task = fetch_url(session, get_fighter_url(fighter_red))
+    blue_task = fetch_url(session, get_fighter_url(fighter_blue))
 
-    response = requests.get(get_fighter_url(fighter_blue), timeout=10)
-    fighter_blue_stat_ = BeautifulSoup(response.content, 'lxml')
-    fighter_blue_stat = get_fighter_stat(fighter_blue_stat_)
-    fighter_blue_record = get_fighter_record(fighter_blue_stat_)
+    # Wait for both requests to complete
+    red_html, blue_html = await asyncio.gather(red_task, blue_task)
 
-    del response
-    gc.collect()
-    return np.concatenate((fighter_red_record, fighter_red_stat, fighter_blue_record, fighter_blue_stat))
+    # Process red fighter
+    red_soup = BeautifulSoup(red_html, 'lxml')
+    red_stat = get_fighter_stat(red_soup)
+    red_record = get_fighter_record(red_soup)
 
+    # Process blue fighter
+    blue_soup = BeautifulSoup(blue_html, 'lxml')
+    blue_stat = get_fighter_stat(blue_soup)
+    blue_record = get_fighter_record(blue_soup)
+
+    return np.concatenate((red_record, red_stat, blue_record, blue_stat))
 
 
 def extract_fighter_names(tag):
@@ -264,7 +277,7 @@ def extract_fighter_names(tag):
     return fighter_name
 
 
-def get_match(event_url):
+async def get_match(event_url):
     """
     Retrieves and processes all matches from a given event.
 
@@ -274,51 +287,59 @@ def get_match(event_url):
     Returns:
         tuple: A list of matches and a NumPy array of input data for predictions.
     """
-    response = requests.get(event_url, timeout=10)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, 'lxml')
 
-    matchlist = list()
-    input_data = list()
-    matchlist_ = soup.find_all('li', class_='l-listing__item')
-    for item in matchlist_:
-        image_ = item.find_all('img')
-        country_ = item.find_all('div', class_='c-listing-fight__country-text')
+    # Use async HTTP requests
+    async with aiohttp.ClientSession() as session:
+        html = await fetch_url(session, event_url)
+        soup = BeautifulSoup(html, 'lxml')
 
-        img_url_ = urlparse(image_[0].get('src'))
-        red_name_ = item.find('div', class_='details-content__name--red')
-        red_name = extract_fighter_names(red_name_)
-        red = {'Name': red_name,
-            'height': image_[0].get('height'),
-            'width': image_[0].get('width'),
-            'image': extract_fighter_image(img_url_),
-            'country': country_[0].text,
-            'country_code': pycountry.countries.search_fuzzy(country_[0].text)[0].alpha_2
-        }
+        # Find all items once
+        matchlist_ = soup.find_all('li', class_='l-listing__item')
 
-        img_url_ = urlparse(image_[1].get('src'))
-        blue_name_ = item.find('div', class_='details-content__name--blue')
-        blue_name = extract_fighter_names(blue_name_)
-        blue = {
-            'Name': blue_name,
-            'height': image_[1].get('height'),
-            'width': image_[1].get('width'),
-            'image': extract_fighter_image(img_url_),
-            'country': country_[1].text,
-            'country_code': pycountry.countries.search_fuzzy(country_[1].text)[0].alpha_2
-        }
+        matchlist = []
+        input_data = []
+        tasks = []
 
-        red['odd'] = item.find_all('span', class_='c-listing-fight__odds-amount')[0].text
-        blue['odd'] = item.find_all('span', class_='c-listing-fight__odds-amount')[1].text
+        # Process items in bulk
+        for item in matchlist_:
+            images = item.find_all('img')
+            country_ = item.find_all('div', class_='c-listing-fight__country-text')
+            odds = item.find_all('span', class_='c-listing-fight__odds-amount')
 
-        input_data.append(prepare_data(red_name, blue_name))
+            # Red fighter
+            red_name_ = item.find('div', class_='details-content__name--red')
+            red_name = extract_fighter_names(red_name_)
+            img_url_ = urlparse(images[0].get('src'))
+            red = {
+                'Name': red_name,
+                'height': images[0].get('height'),
+                'width': images[0].get('width'),
+                'image': extract_fighter_image(img_url_),
+                'country': country_[0].text,
+                'country_code': pycountry.countries.search_fuzzy(country_[0].text)[0].alpha_2,
+                'odd': odds[0].text
+            }
 
-        match = {'red': red, 'blue': blue}
-        matchlist.append(match)
+            # Blue fighter
+            blue_name_ = item.find('div', class_='details-content__name--blue')
+            blue_name = extract_fighter_names(blue_name_)
+            img_url_ = urlparse(images[1].get('src'))
+            blue = {
+                'Name': blue_name,
+                'height': images[1].get('height'),
+                'width': images[1].get('width'),
+                'image': extract_fighter_image(img_url_),
+                'country': country_[1].text,
+                'country_code': pycountry.countries.search_fuzzy(country_[1].text)[0].alpha_2,
+                'odd': odds[1].text
+            }
 
-    del response, soup
-    gc.collect()
-    return matchlist, np.array(input_data)
+            tasks.append(prepare_data(session, red_name, blue_name))
+            matchlist.append({'red': red, 'blue': blue})
+
+        input_data = await asyncio.gather(*tasks)
+
+        return matchlist, np.array(input_data)
 
 
 async def _predict(input_data):
@@ -336,10 +357,10 @@ async def _predict(input_data):
     return output_data[1]
 
 
-@app.get('/predict/{event_path}')
-async def predict(event_path):
+@app.get('/predict/event')
+async def predict(request: Request):
     """
-    Flask route to predict outcomes for a given UFC event.
+    FastAPI route to predict outcomes for a given UFC event.
 
     Args:
         event_path (str): The path segment of the UFC event URL.
@@ -347,8 +368,9 @@ async def predict(event_path):
     Returns:
         Response: A JSON response containing event details and predictions.
     """
+    event_path = str(request.url.query)
     event = get_event('https://www.ufc.com/event/'+event_path)
-    event['match'], input_data = get_match('https://www.ufc.com/event/'+event_path)
+    event['match'], input_data = await get_match('https://www.ufc.com/event/'+event_path)
 
     output_data = await _predict(input_data)
 
@@ -509,7 +531,7 @@ def get_index():
 @app.get('/')
 def onload():
     """
-    Flask route to load the index page and list of upcoming events.
+    FastAPI route to load the index page and list of upcoming events.
 
     Returns:
         Response: A JSON response containing event details and images.
